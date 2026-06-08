@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>原物料行情儀表板</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    background: #f0f2f5; color: #1a1a1a;
+    min-height: 100vh; padding: 20px 16px;
+  }
+  .container { max-width: 1200px; margin: 0 auto; }
+
+  /* ── Header ── */
+  .hdr {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+    margin-bottom: 18px; padding-bottom: 14px;
+    border-bottom: 1px solid #ddd;
+  }
+  .htitle { font-size: 20px; font-weight: 700; color: #1a1a1a; }
+  .hsub { font-size: 12px; color: #888; margin-top: 4px; line-height: 1.4; }
+  .controls { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .updbtn {
+    padding: 9px 18px; background: #1a3a5c; color: #fff;
+    border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background .2s; white-space: nowrap;
+    min-height: 40px;
+  }
+  .updbtn:hover { background: #2a5080; }
+  .updbtn:disabled { background: #999; cursor: not-allowed; }
+  #globalRanges { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+  .rbtn {
+    padding: 5px 11px; border: 1px solid #ccc;
+    background: #fff; border-radius: 6px;
+    font-size: 12px; cursor: pointer; transition: all .15s; color: #444;
+    min-height: 32px; min-width: 36px;
+  }
+  .rbtn:hover { background: #e8f0ff; border-color: #1a3a5c; }
+  .rbtn.active { background: #1a3a5c; color: #fff; border-color: #1a3a5c; }
+
+  #g-custom { display: none; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; margin-top: 2px; }
+  #g-custom.show { display: flex; }
+  #g-custom input[type=date] { font-size: 12px; padding: 5px 7px; border: 1px solid #ccc; border-radius: 5px; min-height: 32px; }
+  #g-custom button { font-size: 12px; padding: 5px 10px; background:#1a3a5c; color:#fff; border:none; border-radius:5px; cursor:pointer; min-height: 32px; }
+
+  /* ── Grid ── */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px; margin-top: 14px;
+  }
+  /* 平板直向 */
+  @media(max-width:960px) { .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; } }
+  /* 手機 */
+  @media(max-width:540px) {
+    body { padding: 12px 10px; }
+    .htitle { font-size: 17px; }
+    .hdr { gap: 10px; }
+    .controls { width: 100%; align-items: flex-start; }
+    .updbtn { width: 100%; text-align: center; }
+    #globalRanges { justify-content: flex-start; }
+    #g-custom { justify-content: flex-start; }
+    .grid { grid-template-columns: 1fr; gap: 8px; }
+  }
+
+  /* ── Card ── */
+  .card {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 12px;
+    padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 8px;
+    transition: box-shadow .2s;
+  }
+  .card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+  .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
+  .card-left { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .cname {
+    font-size: 13px; font-weight: 600; color: #222; line-height: 1.35;
+    word-break: keep-all; overflow-wrap: break-word;
+  }
+  .cprice-row { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+  .cprice { font-size: 20px; font-weight: 700; color: #1a1a1a; }
+  .cprice-unit { font-size: 11px; color: #888; }
+  .card-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
+  .clabel { font-size: 11px; color: #999; margin-bottom: 1px; white-space: nowrap; }
+  .cchg { font-size: 15px; font-weight: 700; white-space: nowrap; }
+  .cchg-label { font-size: 11px; color: #999; text-align: right; }
+  .card-ranges { display: flex; gap: 3px; flex-wrap: wrap; }
+  .card-ranges .rbtn { font-size: 11px; padding: 3px 8px; min-height: 28px; }
+  .card-custom { display: none; gap: 4px; align-items: center; flex-wrap: wrap; margin-top: 2px; }
+  .card-custom.show { display: flex; }
+  .card-custom input[type=date] { font-size: 11px; padding: 3px 5px; border: 1px solid #ccc; border-radius: 4px; min-height: 28px; flex: 1; min-width: 110px; }
+  .card-custom button { font-size: 11px; padding: 3px 8px; background:#1a3a5c; color:#fff; border:none; border-radius:4px; cursor:pointer; min-height: 28px; }
+  .chart-wrap { height: 120px; position: relative; }
+
+  /* 手機 card 細節 */
+  @media(max-width:540px) {
+    .cprice { font-size: 22px; }
+    .cname { font-size: 13px; }
+    .chart-wrap { height: 110px; }
+  }
+
+  .nodata {
+    display: flex; align-items: center; justify-content: center;
+    height: 100%; font-size: 12px; color: #bbb; text-align: center; line-height: 1.6;
+    white-space: pre-line;
+  }
+  .status-bar {
+    text-align: center; font-size: 12px; color: #999;
+    margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee;
+  }
+  .ok { color: #27AE60; } .err { color: #C0392B; }
+
+  /* 載入動畫 */
+  @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+  .loading-pulse { animation: pulse 1.2s ease-in-out infinite; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="hdr">
+    <div>
+      <div class="htitle">📊 原物料行情儀表板</div>
+      <div class="hsub" id="update-time">尚未載入資料</div>
+    </div>
+    <div class="controls">
+      <button class="updbtn" id="updateBtn" onclick="fetchAll()">⟳ 更新資料</button>
+      <div id="globalRanges"></div>
+      <div id="g-custom">
+        <input type="date" id="g-s">
+        <span style="font-size:12px;color:#888">～</span>
+        <input type="date" id="g-e">
+        <button onclick="applyGlobal()">套用</button>
+      </div>
+    </div>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="status-bar" id="statusBar"></div>
+</div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2QJGVERBTqvDmw1-q-ln7rzlQMq-k6GS7g0m9a7q-kuhAlFxF3OE0faqp55WpZtY/exec';
+
+const SHEETS = [
+  {name:'北海布蘭特原油現貨價',       unit:'USD/桶',  color:'#185FA5'},
+  {name:'倫敦鋁現貨價',               unit:'USD/噸',  color:'#0F6E56'},
+  {name:'鋁合金LME庫存量',            unit:'噸',      color:'#3B6D11'},
+  {name:'ABS聚合物(注塑)中國到岸價',  unit:'USD/噸',  color:'#854F0B'},
+  {name:'PVC進口價',                  unit:'USD/噸',  color:'#993C1D'},
+  {name:'水泥50kg北區台泥',           unit:'NTD/包',  color:'#5F5E5A'},
+  {name:'PP市場價',                   unit:'USD/噸',  color:'#185FA5'},
+  {name:'CPL進口價',                  unit:'USD/噸',  color:'#993556'},
+  {name:'鋼板中鋼盤價',               unit:'NTD/噸',  color:'#444441'},
+  {name:'瓦楞芯紙',                   unit:'NT$/噸',  color:'#7B5EA7'},
+];
+
+const RANGES = [
+  {label:'1m',value:'1M'},{label:'3m',value:'3M'},{label:'6m',value:'6M'},
+  {label:'1y',value:'1Y'},{label:'3y',value:'3Y'},{label:'all',value:'ALL'},
+  {label:'自訂',value:'custom'},
+];
+const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+const allData = {};
+let globalRange = '1Y';
+let gCustomStart = null, gCustomEnd = null;
+const cardRanges = {};
+const cardCustom = {};
+const charts = {};
+
+async function fetchSheet(sheet) {
+  const url = GAS_URL + '?sheet=' + encodeURIComponent(sheet.name);
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data.map(r => ({ date: r[0], price: r[1] }))
+               .filter(r => r.date && !isNaN(r.price))
+               .sort((a,b) => a.date.localeCompare(b.date));
+  } catch(e) { return []; }
+}
+
+function filterByRange(rows, range, cs, ce) {
+  if (!rows || rows.length === 0) return [];
+  if (range === 'ALL') return rows;
+  if (range === 'custom') {
+    if (!cs || !ce) return rows;
+    return rows.filter(r => r.date >= cs.replace(/-/g,'/') && r.date <= ce.replace(/-/g,'/'));
+  }
+  const now = new Date(); const cutoff = new Date(now);
+  if (range === '1M') cutoff.setMonth(now.getMonth()-1);
+  else if (range === '3M') cutoff.setMonth(now.getMonth()-3);
+  else if (range === '6M') cutoff.setMonth(now.getMonth()-6);
+  else if (range === '1Y') cutoff.setFullYear(now.getFullYear()-1);
+  else if (range === '3Y') cutoff.setFullYear(now.getFullYear()-3);
+  const cs2 = cutoff.getFullYear()+'/'
+    +String(cutoff.getMonth()+1).padStart(2,'0')+'/'
+    +String(cutoff.getDate()).padStart(2,'0');
+  return rows.filter(r => r.date >= cs2);
+}
+
+function fmtXLabel(dateStr, range) {
+  const t = new Date(dateStr.replace(/\//g,'-'));
+  if (range === 'ALL') return "'" + String(t.getFullYear()).slice(2);
+  if (range === '3Y' || range === '1Y') return MONTH_SHORT[t.getMonth()] + " '" + String(t.getFullYear()).slice(2);
+  return t.getDate() + ' ' + MONTH_SHORT[t.getMonth()];
+}
+
+function drawChart(canvas, rows, color, range) {
+  const id = canvas.dataset.chartId;
+  if (id && charts[id]) { charts[id].destroy(); }
+  const labels = rows.map(r => fmtXLabel(r.date, range));
+  const prices = rows.map(r => r.price);
+  const mn = Math.min(...prices), mx = Math.max(...prices);
+  const pad = (mx - mn) * 0.1 || mx * 0.05 || 1;
+  const cid = 'c_' + Math.random().toString(36).slice(2);
+  canvas.dataset.chartId = cid;
+  charts[cid] = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: prices, borderColor: color, borderWidth: 1.8,
+        pointRadius: 0, tension: 0.3, fill: true,
+        backgroundColor: (c) => {
+          const g = c.chart.ctx.createLinearGradient(0,0,0,c.chart.height);
+          g.addColorStop(0, color+'28'); g.addColorStop(1, color+'00'); return g;
+        }
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          mode: 'index', intersect: false,
+          backgroundColor: '#fff', borderColor: '#ddd', borderWidth: 1,
+          titleColor: '#555', bodyColor: '#222', padding: 8,
+          callbacks: {
+            title: items => rows[items[0].dataIndex]?.date || '',
+            label: ctx => ctx.parsed.y.toLocaleString()
+          }
+        }
+      },
+      scales: {
+        x: { ticks:{color:'#aaa',font:{size:9},maxTicksLimit:5,maxRotation:0}, grid:{color:'#f0f0f0'} },
+        y: { position:'right', min:mn-pad, max:mx+pad,
+             ticks:{color:'#aaa',font:{size:9},maxTicksLimit:4,
+               callback:v=>v>=1000?(v/1000).toFixed(1)+'k':v.toLocaleString()},
+             grid:{color:'#f0f0f0'} }
+      }
+    }
+  });
+}
+
+function buildCard(idx, sheet) {
+  const div = document.createElement('div');
+  div.className = 'card'; div.dataset.idx = idx;
+  div.innerHTML = `
+    <div class="card-top">
+      <div class="card-left">
+        <div class="cname">${sheet.name}</div>
+        <div class="clabel" id="clabel-${idx}">--</div>
+        <div class="cprice-row">
+          <span class="cprice" id="cp-${idx}">--</span>
+          <span class="cprice-unit">${sheet.unit}</span>
+        </div>
+      </div>
+      <div class="card-right">
+        <div class="cchg" id="cc-${idx}">--</div>
+        <div class="cchg-label">漲跌幅</div>
+      </div>
+    </div>
+    <div class="card-ranges" id="cr-${idx}">
+      ${RANGES.map(r=>`<button class="rbtn" data-range="${r.value}" onclick="setCard(${idx},'${r.value}')">${r.label}</button>`).join('')}
+    </div>
+    <div class="card-custom" id="cc-custom-${idx}">
+      <input type="date" id="cs-${idx}">
+      <span style="font-size:11px;color:#888">～</span>
+      <input type="date" id="ce-${idx}">
+      <button onclick="applyCard(${idx})">套用</button>
+    </div>
+    <div class="chart-wrap">
+      <div class="nodata loading-pulse" id="cnd-${idx}">載入中…</div>
+      <canvas id="cv-${idx}" style="display:none"></canvas>
+    </div>`;
+  return div;
+}
+
+function renderCard(idx, sheet, range, cs, ce) {
+  const rows = allData[idx] || [];
+  const filtered = filterByRange(rows, range, cs, ce);
+  const cpEl = document.getElementById('cp-'+idx);
+  const ccEl = document.getElementById('cc-'+idx);
+  if (rows.length > 0) {
+    const last = rows[rows.length-1];
+    const labelPrefix = sheet.name.includes('庫存量') ? '最新庫存量' : '最新價格';
+    document.getElementById('clabel-'+idx).textContent = labelPrefix + ' ' + last.date;
+    cpEl.textContent = last.price.toLocaleString();
+    if (filtered.length >= 2) {
+      const first = filtered[0];
+      const chg = (last.price - first.price) / first.price * 100;
+      const sign = chg >= 0 ? '▲' : '▼';
+      ccEl.textContent = sign + Math.abs(chg).toFixed(2) + '%';
+      ccEl.style.color = chg >= 0 ? '#C0392B' : '#27AE60';
+    } else { ccEl.textContent = '--'; ccEl.style.color = '#999'; }
+  } else {
+    document.getElementById('clabel-'+idx).textContent = '--';
+    cpEl.textContent = '--'; ccEl.textContent = '--'; ccEl.style.color = '#999';
+  }
+
+  const eff = cardRanges[idx] || range;
+  document.querySelectorAll(`#cr-${idx} .rbtn`).forEach(b => {
+    b.classList.toggle('active', b.dataset.range === eff);
+  });
+  document.getElementById('cc-custom-'+idx).classList.toggle('show', eff === 'custom');
+
+  const ndEl = document.getElementById('cnd-'+idx);
+  const cvEl = document.getElementById('cv-'+idx);
+  ndEl.classList.remove('loading-pulse');
+  if (filtered.length > 1) {
+    ndEl.style.display = 'none'; cvEl.style.display = 'block';
+    setTimeout(() => drawChart(cvEl, filtered, sheet.color, eff), 0);
+  } else {
+    ndEl.style.display = 'flex';
+    ndEl.textContent = rows.length === 0 ? '尚無資料\n按「更新資料」載入' : '此期間無資料';
+    cvEl.style.display = 'none';
+  }
+}
+
+function setCard(idx, range) {
+  cardRanges[idx] = range;
+  renderCard(idx, SHEETS[idx], range, cardCustom[idx]?.s||null, cardCustom[idx]?.e||null);
+}
+function applyCard(idx) {
+  const s = document.getElementById('cs-'+idx)?.value;
+  const e = document.getElementById('ce-'+idx)?.value;
+  if (!s||!e){ alert('請選擇日期範圍'); return; }
+  cardCustom[idx]={s,e}; cardRanges[idx]='custom';
+  renderCard(idx, SHEETS[idx], 'custom', s, e);
+}
+function setGlobal(range) {
+  globalRange = range;
+  Object.keys(cardRanges).forEach(k => delete cardRanges[k]);
+  buildGlobalRanges();
+  document.getElementById('g-custom').classList.toggle('show', range==='custom');
+  if (range !== 'custom') {
+    gCustomStart=null; gCustomEnd=null;
+    SHEETS.forEach((sheet,i) => renderCard(i, sheet, globalRange, null, null));
+  }
+}
+function applyGlobal() {
+  gCustomStart = document.getElementById('g-s').value;
+  gCustomEnd   = document.getElementById('g-e').value;
+  if (!gCustomStart||!gCustomEnd){ alert('請選擇開始與結束日期'); return; }
+  Object.keys(cardRanges).forEach(k => delete cardRanges[k]);
+  SHEETS.forEach((sheet,i) => renderCard(i, sheet, 'custom', gCustomStart, gCustomEnd));
+}
+function buildGlobalRanges() {
+  document.getElementById('globalRanges').innerHTML = RANGES.map(r =>
+    `<button class="rbtn${globalRange===r.value?' active':''}" onclick="setGlobal('${r.value}')">${r.label}</button>`
+  ).join('');
+}
+
+async function fetchAll() {
+  const btn = document.getElementById('updateBtn');
+  btn.disabled=true; btn.textContent='載入中…';
+  document.getElementById('statusBar').innerHTML='資料抓取中，請稍候…';
+  let ok=0, fail=0;
+  await Promise.all(SHEETS.map((sheet,i) =>
+    fetchSheet(sheet).then(rows => {
+      allData[i]=rows;
+      renderCard(i, sheet, cardRanges[i]||globalRange, cardCustom[i]?.s||null, cardCustom[i]?.e||null);
+      if(rows.length>0) ok++; else fail++;
+    }).catch(()=>{ allData[i]=[]; fail++; })
+  ));
+  const now = new Date();
+  const ts = now.getFullYear()+'/'
+    +String(now.getMonth()+1).padStart(2,'0')+'/'
+    +String(now.getDate()).padStart(2,'0')+' '
+    +String(now.getHours()).padStart(2,'0')+':'
+    +String(now.getMinutes()).padStart(2,'0');
+  document.getElementById('update-time').textContent='資料來源：Google Sheets · 最後更新：'+ts;
+  document.getElementById('statusBar').innerHTML=
+    `<span class="ok">✔ ${ok} 項載入成功</span>${fail>0?` <span class="err">✘ ${fail} 項無資料</span>`:''}`;
+  btn.disabled=false; btn.textContent='⟳ 更新資料';
+}
+
+buildGlobalRanges();
+const grid = document.getElementById('grid');
+SHEETS.forEach((sheet,i) => grid.appendChild(buildCard(i, sheet)));
+fetchAll();
+</script>
+</body>
+</html>
