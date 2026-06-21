@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>原物料行情儀表板</title>
+<title>原物料 & 營造物價指數儀表板</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -116,13 +116,24 @@
   /* 載入動畫 */
   @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
   .loading-pulse { animation: pulse 1.2s ease-in-out infinite; }
+
+  /* ── 區塊標題 ── */
+  .section { margin-top: 6px; }
+  .section + .section { margin-top: 24px; }
+  .section-title {
+    display: flex; align-items: baseline; gap: 9px;
+    font-size: 16px; font-weight: 700; color: #1a3a5c;
+    border-left: 4px solid #1a3a5c; padding: 4px 0 4px 10px; margin-bottom: 4px;
+  }
+  .section-count { font-size: 12px; font-weight: 500; color: #999; }
+  @media(max-width:540px){ .section-title { font-size: 15px; } }
 </style>
 </head>
 <body>
 <div class="container">
   <div class="hdr">
     <div>
-      <div class="htitle">📊 原物料行情儀表板</div>
+      <div class="htitle">📊 原物料 & 營造物價指數儀表板</div>
       <div class="hsub" id="update-time">尚未載入資料</div>
     </div>
     <div class="controls">
@@ -136,7 +147,7 @@
       </div>
     </div>
   </div>
-  <div class="grid" id="grid"></div>
+  <div id="sections"></div>
   <div class="status-bar" id="statusBar"></div>
 </div>
 
@@ -144,17 +155,40 @@
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2QJGVERBTqvDmw1-q-ln7rzlQMq-k6GS7g0m9a7q-kuhAlFxF3OE0faqp55WpZtY/exec';
 
 const SHEETS = [
-  {name:'北海布蘭特原油現貨價',       unit:'USD/桶',  color:'#185FA5'},
-  {name:'倫敦鋁現貨價',               unit:'USD/噸',  color:'#0F6E56'},
-  {name:'鋁合金LME庫存量',            unit:'噸',      color:'#3B6D11'},
-  {name:'ABS聚合物(注塑)中國到岸價',  unit:'USD/噸',  color:'#854F0B'},
-  {name:'PVC進口價',                  unit:'USD/噸',  color:'#993C1D'},
-  {name:'水泥50kg北區台泥',           unit:'NTD/包',  color:'#5F5E5A'},
-  {name:'PP市場價',                   unit:'USD/噸',  color:'#185FA5'},
-  {name:'CPL進口價',                  unit:'USD/噸',  color:'#993556'},
-  {name:'鋼板中鋼盤價',               unit:'NTD/噸',  color:'#444441'},
-  {name:'瓦楞芯紙',                   unit:'NT$/噸',  color:'#7B5EA7'},
+  // ── 原物料 ──
+  {name:'北海布蘭特原油現貨價',       group:'原物料', unit:'USD/桶',  color:'#185FA5'},
+  {name:'倫敦鋁現貨價',               group:'原物料', unit:'USD/噸',  color:'#0F6E56'},
+  {name:'鋁合金LME庫存量',            group:'原物料', unit:'噸',      color:'#3B6D11'},
+  {name:'ABS聚合物(注塑)中國到岸價',  group:'原物料', unit:'USD/噸',  color:'#854F0B'},
+  {name:'PVC進口價',                  group:'原物料', unit:'USD/噸',  color:'#993C1D'},
+  {name:'水泥50kg北區台泥',           group:'原物料', unit:'NTD/包',  color:'#5F5E5A'},
+  {name:'PP市場價',                   group:'原物料', unit:'USD/噸',  color:'#185FA5'},
+  {name:'CPL進口價',                  group:'原物料', unit:'USD/噸',  color:'#993556'},
+  {name:'鋼板中鋼盤價',               group:'原物料', unit:'NTD/噸',  color:'#444441'},
+  {name:'瓦楞芯紙',                   group:'原物料', unit:'NT$/噸',  color:'#7B5EA7'},
+  // ── 建材類指數（基期 110=100） ──
+  {name:'磁磚',           group:'建材類指數', unit:'指數', color:'#185FA5'},
+  {name:'輕鋼架',         group:'建材類指數', unit:'指數', color:'#0F6E56'},
+  {name:'木門',           group:'建材類指數', unit:'指數', color:'#854F0B'},
+  {name:'塑膠地磚',       group:'建材類指數', unit:'指數', color:'#993C1D'},
+  {name:'油漆',           group:'建材類指數', unit:'指數', color:'#3B6D11'},
+  {name:'水泥漆',         group:'建材類指數', unit:'指數', color:'#993556'},
+  {name:'電線電纜',       group:'建材類指數', unit:'指數', color:'#5F5E5A'},
+  {name:'照明開關及插座', group:'建材類指數', unit:'指數', color:'#7B5EA7'},
+  {name:'照明設備',       group:'建材類指數', unit:'指數', color:'#185FA5'},
+  {name:'通信器材及材料', group:'建材類指數', unit:'指數', color:'#0F6E56'},
+  {name:'玻璃製品',       group:'建材類指數', unit:'指數', color:'#854F0B'},
+  {name:'矽酸鈣板',       group:'建材類指數', unit:'指數', color:'#993C1D'},
+  {name:'礦纖板',         group:'建材類指數', unit:'指數', color:'#444441'},
+  // ── 工資類指數（基期 110=100） ──
+  {name:'泥水工',         group:'工資類指數', unit:'指數', color:'#C0392B'},
+  {name:'油漆工',         group:'工資類指數', unit:'指數', color:'#0F6E56'},
+  {name:'水電安裝工',     group:'工資類指數', unit:'指數', color:'#185FA5'},
+  {name:'木工',           group:'工資類指數', unit:'指數', color:'#854F0B'},
+  {name:'非技術工',       group:'工資類指數', unit:'指數', color:'#5F5E5A'},
 ];
+
+const SECTIONS = ['原物料','建材類指數','工資類指數'];
 
 const RANGES = [
   {label:'1m',value:'1M'},{label:'3m',value:'3M'},{label:'6m',value:'6M'},
@@ -296,7 +330,8 @@ function renderCard(idx, sheet, range, cs, ce) {
   const ccEl = document.getElementById('cc-'+idx);
   if (rows.length > 0) {
     const last = rows[rows.length-1];
-    const labelPrefix = sheet.name.includes('庫存量') ? '最新庫存量' : '最新價格';
+    const isIdx = sheet.group && sheet.group.indexOf('指數') >= 0;
+    const labelPrefix = isIdx ? '最新指數' : (sheet.name.includes('庫存量') ? '最新庫存量' : '最新價格');
     document.getElementById('clabel-'+idx).textContent = labelPrefix + ' ' + last.date;
     cpEl.textContent = last.price.toLocaleString();
     if (filtered.length >= 2) {
@@ -389,8 +424,17 @@ async function fetchAll() {
 }
 
 buildGlobalRanges();
-const grid = document.getElementById('grid');
-SHEETS.forEach((sheet,i) => grid.appendChild(buildCard(i, sheet)));
+const sectionsEl = document.getElementById('sections');
+const groupGrids = {};
+SECTIONS.forEach(g => {
+  const cnt = SHEETS.filter(s => s.group === g).length;
+  const sec = document.createElement('div');
+  sec.className = 'section';
+  sec.innerHTML = `<div class="section-title">${g}<span class="section-count">${cnt} 項</span></div><div class="grid"></div>`;
+  sectionsEl.appendChild(sec);
+  groupGrids[g] = sec.querySelector('.grid');
+});
+SHEETS.forEach((sheet,i) => groupGrids[sheet.group].appendChild(buildCard(i, sheet)));
 fetchAll();
 </script>
 </body>
