@@ -111,7 +111,7 @@
     text-align: center; font-size: 12px; color: #999;
     margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee;
   }
-  .ok { color: #27AE60; } .err { color: #C0392B; }
+  .ok { color: #27AE60; } .err { color: #C0392B; } .warn { color: #b07d00; }
 
   /* 載入動畫 */
   @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
@@ -399,10 +399,9 @@ function buildGlobalRanges() {
   ).join('');
 }
 
-async function fetchAll() {
-  const btn = document.getElementById('updateBtn');
-  btn.disabled=true; btn.textContent='載入中…';
-  document.getElementById('statusBar').innerHTML='資料抓取中，請稍候…';
+/* ── 讀取試算表資料並畫圖（不抓取來源網站） ── */
+async function loadAll(prefixMsg) {
+  document.getElementById('statusBar').innerHTML = (prefixMsg||'') + '資料載入中，請稍候…';
   let ok=0, fail=0;
   await Promise.all(SHEETS.map((sheet,i) =>
     fetchSheet(sheet).then(rows => {
@@ -418,8 +417,33 @@ async function fetchAll() {
     +String(now.getHours()).padStart(2,'0')+':'
     +String(now.getMinutes()).padStart(2,'0');
   document.getElementById('update-time').textContent='資料來源：Google Sheets · 最後更新：'+ts;
-  document.getElementById('statusBar').innerHTML=
+  document.getElementById('statusBar').innerHTML= (prefixMsg||'') +
     `<span class="ok">✔ ${ok} 項載入成功</span>${fail>0?` <span class="err">✘ ${fail} 項無資料</span>`:''}`;
+}
+
+/* ── 按「⟳ 更新資料」：先請 GAS 自動抓取台銀＋主計總處，再重新載入圖表 ── */
+async function fetchAll() {
+  const btn = document.getElementById('updateBtn');
+  btn.disabled=true; btn.textContent='① 抓取來源網站…';
+  document.getElementById('statusBar').innerHTML=
+    '正在從台灣銀行與主計總處抓取最新資料寫入試算表，約需 30～90 秒，請勿關閉頁面…';
+  let updMsg='';
+  try {
+    const res = await fetch(GAS_URL + '?action=update');
+    const j = await res.json();
+    if (j && j.ok) {
+      updMsg = `<span class="ok">✔ 來源抓取完成：新增 ${j.added||0} 筆</span>`
+             + (j.failed>0 ? ` <span class="warn">⚠ ${j.failed} 項抓取失敗</span>` : '')
+             + '　';
+      if (j.detail) console.log('更新明細：\n' + j.detail.join('\n'));
+    } else {
+      updMsg = `<span class="err">⚠ 自動抓取異常：${(j&&j.error)||'未知錯誤'}</span>　`;
+    }
+  } catch(e) {
+    updMsg = '<span class="err">⚠ 無法連線更新服務，僅重新載入現有資料</span>　';
+  }
+  btn.textContent='② 載入圖表…';
+  await loadAll(updMsg);
   btn.disabled=false; btn.textContent='⟳ 更新資料';
 }
 
@@ -435,7 +459,7 @@ SECTIONS.forEach(g => {
   groupGrids[g] = sec.querySelector('.grid');
 });
 SHEETS.forEach((sheet,i) => groupGrids[sheet.group].appendChild(buildCard(i, sheet)));
-fetchAll();
+loadAll('');   /* 開啟頁面時只讀取現有資料，不觸發來源抓取 */
 </script>
 </body>
 </html>
