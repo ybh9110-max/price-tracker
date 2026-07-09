@@ -154,39 +154,7 @@
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2QJGVERBTqvDmw1-q-ln7rzlQMq-k6GS7g0m9a7q-kuhAlFxF3OE0faqp55WpZtY/exec';
 
-const SHEETS = [
-  // ── 原物料 ──
-  {name:'北海布蘭特原油現貨價',       group:'原物料', unit:'USD/桶',  color:'#185FA5'},
-  {name:'倫敦鋁現貨價',               group:'原物料', unit:'USD/噸',  color:'#0F6E56'},
-  {name:'鋁合金LME庫存量',            group:'原物料', unit:'噸',      color:'#3B6D11'},
-  {name:'ABS聚合物(注塑)中國到岸價',  group:'原物料', unit:'USD/噸',  color:'#854F0B'},
-  {name:'PVC進口價',                  group:'原物料', unit:'USD/噸',  color:'#993C1D'},
-  {name:'水泥50kg北區台泥',           group:'原物料', unit:'NTD/包',  color:'#5F5E5A'},
-  {name:'PP市場價',                   group:'原物料', unit:'USD/噸',  color:'#185FA5'},
-  {name:'CPL進口價',                  group:'原物料', unit:'USD/噸',  color:'#993556'},
-  {name:'鋼板中鋼盤價',               group:'原物料', unit:'NTD/噸',  color:'#444441'},
-  {name:'瓦楞芯紙',                   group:'原物料', unit:'NT$/噸',  color:'#7B5EA7'},
-  // ── 建材類指數（基期 110=100） ──
-  {name:'磁磚',           group:'建材類指數', unit:'指數', color:'#185FA5'},
-  {name:'輕鋼架',         group:'建材類指數', unit:'指數', color:'#0F6E56'},
-  {name:'木門',           group:'建材類指數', unit:'指數', color:'#854F0B'},
-  {name:'塑膠地磚',       group:'建材類指數', unit:'指數', color:'#993C1D'},
-  {name:'油漆',           group:'建材類指數', unit:'指數', color:'#3B6D11'},
-  {name:'水泥漆',         group:'建材類指數', unit:'指數', color:'#993556'},
-  {name:'電線電纜',       group:'建材類指數', unit:'指數', color:'#5F5E5A'},
-  {name:'照明開關及插座', group:'建材類指數', unit:'指數', color:'#7B5EA7'},
-  {name:'照明設備',       group:'建材類指數', unit:'指數', color:'#185FA5'},
-  {name:'通信器材及材料', group:'建材類指數', unit:'指數', color:'#0F6E56'},
-  {name:'玻璃製品',       group:'建材類指數', unit:'指數', color:'#854F0B'},
-  {name:'矽酸鈣板',       group:'建材類指數', unit:'指數', color:'#993C1D'},
-  {name:'礦纖板',         group:'建材類指數', unit:'指數', color:'#444441'},
-  // ── 工資類指數（基期 110=100） ──
-  {name:'泥水工',         group:'工資類指數', unit:'指數', color:'#C0392B'},
-  {name:'油漆工',         group:'工資類指數', unit:'指數', color:'#0F6E56'},
-  {name:'水電安裝工',     group:'工資類指數', unit:'指數', color:'#185FA5'},
-  {name:'木工',           group:'工資類指數', unit:'指數', color:'#854F0B'},
-  {name:'非技術工',       group:'工資類指數', unit:'指數', color:'#5F5E5A'},
-];
+let SHEETS = [];   /* 品項清單改由試算表「⚙設定」工作表管理，開頁時自動載入 */
 
 const SECTIONS = ['原物料','建材類指數','工資類指數'];
 
@@ -443,23 +411,46 @@ async function fetchAll() {
     updMsg = '<span class="err">⚠ 無法連線更新服務，僅重新載入現有資料</span>　';
   }
   btn.textContent='② 載入圖表…';
-  await loadAll(updMsg);
+  const keep = updMsg;
+  await init();                       /* 重新載入設定（品項可能剛在⚙設定增減） */
+  const sb2 = document.getElementById('statusBar');
+  sb2.innerHTML = keep + sb2.innerHTML;
   btn.disabled=false; btn.textContent='⟳ 更新資料';
 }
 
-buildGlobalRanges();
-const sectionsEl = document.getElementById('sections');
-const groupGrids = {};
-SECTIONS.forEach(g => {
-  const cnt = SHEETS.filter(s => s.group === g).length;
-  const sec = document.createElement('div');
-  sec.className = 'section';
-  sec.innerHTML = `<div class="section-title">${g}<span class="section-count">${cnt} 項</span></div><div class="grid"></div>`;
-  sectionsEl.appendChild(sec);
-  groupGrids[g] = sec.querySelector('.grid');
-});
-SHEETS.forEach((sheet,i) => groupGrids[sheet.group].appendChild(buildCard(i, sheet)));
-loadAll('');   /* 開啟頁面時只讀取現有資料，不觸發來源抓取 */
+/* ── 開頁流程：先向試算表⚙設定取得品項清單，再動態建立卡片 ── */
+async function init() {
+  const sb = document.getElementById('statusBar');
+  sb.innerHTML = '正在載入品項設定…';
+  try {
+    const res = await fetch(GAS_URL + '?action=config');
+    const j = await res.json();
+    if (!j || !j.ok || !Array.isArray(j.items) || j.items.length === 0) {
+      throw new Error((j && j.error) || '設定為空');
+    }
+    SHEETS = j.items;
+  } catch(e) {
+    sb.innerHTML = '<span class="err">⚠ 無法載入品項設定（' + e.message +
+      '）。請確認 Apps Script 已部署新版，並執行過「初始化設定表」。</span>';
+    return;
+  }
+  buildGlobalRanges();
+  const sectionsEl = document.getElementById('sections');
+  sectionsEl.innerHTML = '';
+  const groupGrids = {};
+  SECTIONS.forEach(g => {
+    const cnt = SHEETS.filter(s => s.group === g).length;
+    if (cnt === 0) return;   /* 該分類沒有啟用品項就不顯示區塊 */
+    const sec = document.createElement('div');
+    sec.className = 'section';
+    sec.innerHTML = `<div class="section-title">${g}<span class="section-count">${cnt} 項</span></div><div class="grid"></div>`;
+    sectionsEl.appendChild(sec);
+    groupGrids[g] = sec.querySelector('.grid');
+  });
+  SHEETS.forEach((sheet,i) => groupGrids[sheet.group].appendChild(buildCard(i, sheet)));
+  await loadAll('');   /* 開啟頁面時只讀取現有資料，不觸發來源抓取 */
+}
+init();
 </script>
 </body>
 </html>
