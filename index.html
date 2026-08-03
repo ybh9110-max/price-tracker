@@ -127,6 +127,64 @@
   }
   .section-count { font-size: 12px; font-weight: 500; color: #999; }
   @media(max-width:540px){ .section-title { font-size: 15px; } }
+
+  /* ══════════ 月報產生器 ══════════ */
+  .rptbtn {
+    padding: 9px 18px; background: #0F6E56; color: #fff;
+    border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background .2s; white-space: nowrap; min-height: 40px;
+  }
+  .rptbtn:hover { background: #12856a; }
+  .rptbtn:disabled { background: #999; cursor: not-allowed; }
+  .btnrow { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  @media(max-width:540px){ .btnrow { width:100%; } .btnrow button { flex:1; } }
+
+  /* 產生報告時的固定版面（截圖用） */
+  body.report-mode { padding: 0 !important; background: #f0f2f5 !important; }
+  body.report-mode .container { max-width: none !important; width: 1216px !important; margin: 0 !important; }
+  body.report-mode .hdr, body.report-mode .status-bar { display: none !important; }
+  body.report-mode .card-ranges, body.report-mode .card-custom { display: none !important; }
+  body.report-mode .grid { grid-template-columns: repeat(3, 1fr) !important; gap: 12px !important; }
+  body.report-mode .card { box-shadow: none !important; }
+  body.report-mode .chart-wrap { height: 120px !important; }
+  body.report-mode .section + .section { margin-top: 24px !important; }
+
+  /* 遮罩 */
+  #rptOverlay {
+    display: none; position: fixed; inset: 0; z-index: 9000;
+    background: rgba(240,242,245,.97); align-items: center; justify-content: center;
+    flex-direction: column; gap: 14px; text-align: center; padding: 20px;
+  }
+  #rptOverlay.show { display: flex; }
+  #rptOverlay .big { font-size: 18px; font-weight: 700; color: #1a3a5c; }
+  #rptOverlay .small { font-size: 13px; color: #666; line-height: 1.7; }
+
+  /* 設定視窗 */
+  #rptModal { display: none; position: fixed; inset: 0; z-index: 9100; background: rgba(0,0,0,.45); overflow-y: auto; padding: 24px 12px; }
+  #rptModal.show { display: block; }
+  .rpt-box {
+    background: #fff; max-width: 720px; margin: 0 auto; border-radius: 14px;
+    padding: 22px 24px 20px; box-shadow: 0 8px 40px rgba(0,0,0,.25);
+  }
+  .rpt-box h3 { font-size: 18px; color: #1a3a5c; margin-bottom: 4px; }
+  .rpt-box .hint { font-size: 12px; color: #888; line-height: 1.6; margin-bottom: 16px; }
+  .rpt-field { margin-bottom: 16px; }
+  .rpt-field > label { display: block; font-size: 13px; font-weight: 600; color: #333; margin-bottom: 6px; }
+  .rpt-field .sub { font-size: 11px; color: #999; font-weight: 400; }
+  .rpt-field input[type=date], .rpt-field textarea, .rpt-field select {
+    width: 100%; font-size: 13px; padding: 8px 10px; border: 1px solid #ccc;
+    border-radius: 6px; font-family: inherit; color: #222; background: #fff;
+  }
+  .rpt-field textarea { line-height: 1.7; resize: vertical; }
+  .rpt-ranges { display: flex; gap: 5px; flex-wrap: wrap; }
+  .rpt-ranges .rbtn { min-height: 34px; }
+  #rpt-custom { display: none; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  #rpt-custom.show { display: flex; }
+  .rpt-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #333; line-height: 1.6; }
+  .rpt-check input { margin-top: 3px; flex-shrink: 0; width: 16px; height: 16px; }
+  .rpt-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; padding-top: 16px; border-top: 1px solid #eee; }
+  .rpt-cancel { padding: 9px 18px; background: #fff; color: #555; border: 1px solid #ccc; border-radius: 8px; font-size: 14px; cursor: pointer; min-height: 40px; }
+  .rpt-err { font-size: 13px; color: #C0392B; margin-top: 10px; line-height: 1.6; }
 </style>
 </head>
 <body>
@@ -137,7 +195,10 @@
       <div class="hsub" id="update-time">尚未載入資料</div>
     </div>
     <div class="controls">
-      <button class="updbtn" id="updateBtn" onclick="fetchAll()">⟳ 更新資料</button>
+      <div class="btnrow">
+        <button class="updbtn" id="updateBtn" onclick="fetchAll()">⟳ 更新資料</button>
+        <button class="rptbtn" id="reportBtn" onclick="openReportModal()">📄 產生月報</button>
+      </div>
       <div id="globalRanges"></div>
       <div id="g-custom">
         <input type="date" id="g-s">
@@ -149,6 +210,62 @@
   </div>
   <div id="sections"></div>
   <div class="status-bar" id="statusBar"></div>
+</div>
+
+<!-- ══════════ 月報設定視窗 ══════════ -->
+<div id="rptModal">
+  <div class="rpt-box">
+    <h3>📄 產生原物料月報</h3>
+    <div class="hint">會依下列設定產生 PowerPoint（封面／說明／摘要／各區塊截圖），並可同時下載一份數據 JSON 交給 Claude 草擬摘要。</div>
+
+    <div class="rpt-field">
+      <label>報告日期 <span class="sub">（決定封面日期與檔名）</span></label>
+      <input type="date" id="rpt-date">
+    </div>
+
+    <div class="rpt-field">
+      <label>圖表時間軸區間 <span class="sub">（會套用到所有卡片）</span></label>
+      <div class="rpt-ranges" id="rpt-ranges"></div>
+      <div id="rpt-custom">
+        <input type="date" id="rpt-cs" style="width:auto"> ～
+        <input type="date" id="rpt-ce" style="width:auto">
+      </div>
+    </div>
+
+    <div class="rpt-field">
+      <label>第 2 頁「報告說明」內容 <span class="sub">（第一行＝標題；行首打「- 」會變成第二層縮排；內容自動記住）</span></label>
+      <textarea id="rpt-intro" rows="12"></textarea>
+    </div>
+
+    <div class="rpt-field">
+      <label>第 3 頁「本次報告內容摘要」 <span class="sub">（留空＝產生佔位頁，之後由 Claude 補；「品項：說明」的品項會自動變藍色粗體）</span></label>
+      <textarea id="rpt-summary" rows="5" placeholder="留空即可，稍後把 JSON 丟給 Claude 自動草擬"></textarea>
+    </div>
+
+    <div class="rpt-field">
+      <label class="rpt-check" style="margin-bottom:10px">
+        <input type="checkbox" id="rpt-update" checked>
+        <span><b>產生前先抓取最新資料</b>（等同先按一次「⟳ 更新資料」，約需 30～90 秒）<br>
+          <span style="color:#b07d00">取消勾選的話，PPT 會截到目前畫面上的舊資料。</span></span>
+      </label>
+      <label class="rpt-check">
+        <input type="checkbox" id="rpt-json" checked>
+        <span>同時下載「原物料月報數據」JSON（含各品項近1個月／近半年／YOY 漲跌幅，給 Claude 寫摘要用）</span>
+      </label>
+    </div>
+
+    <div class="rpt-err" id="rpt-err" style="display:none"></div>
+
+    <div class="rpt-actions">
+      <button class="rpt-cancel" onclick="closeReportModal()">取消</button>
+      <button class="rptbtn" onclick="runReport()">開始產生</button>
+    </div>
+  </div>
+</div>
+
+<div id="rptOverlay">
+  <div class="big" id="rptOvText">產生中…</div>
+  <div class="small">產生期間畫面會暫時變形，這是正常的，完成後會自動復原。<br>請不要切換或關閉這個分頁。</div>
 </div>
 
 <script>
@@ -443,6 +560,7 @@ async function init() {
     if (cnt === 0) return;   /* 該分類沒有啟用品項就不顯示區塊 */
     const sec = document.createElement('div');
     sec.className = 'section';
+    sec.dataset.group = g;
     sec.innerHTML = `<div class="section-title">${g}<span class="section-count">${cnt} 項</span></div><div class="grid"></div>`;
     sectionsEl.appendChild(sec);
     groupGrids[g] = sec.querySelector('.grid');
@@ -451,6 +569,382 @@ async function init() {
   await loadAll('');   /* 開啟頁面時只讀取現有資料，不觸發來源抓取 */
 }
 init();
+</script>
+
+<!-- ══════════════════════════════════════════════════════
+     月報產生器（截圖 → PowerPoint + 數據 JSON）
+     ══════════════════════════════════════════════════════ -->
+<script>
+/* ── 函式庫延遲載入（多來源備援，避免公司防火牆擋單一 CDN）── */
+const RPT_CDN = {
+  html2canvas: [
+    'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+    'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
+    'https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js'
+  ],
+  PptxGenJS: [
+    'https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js',
+    'https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js'
+  ]
+};
+function rptLoadScript(url) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = url; s.onload = res; s.onerror = () => rej(new Error(url));
+    document.head.appendChild(s);
+  });
+}
+async function rptEnsure(globalKey) {
+  if (window[globalKey]) return;
+  for (const u of RPT_CDN[globalKey]) {
+    try { await rptLoadScript(u); if (window[globalKey]) return; } catch (e) { /* 換下一個來源 */ }
+  }
+  throw new Error('無法載入 ' + globalKey + ' 函式庫。請確認網路連線，或請 IT 放行 cdnjs.cloudflare.com / cdn.jsdelivr.net');
+}
+
+const rptSleep = ms => new Promise(r => setTimeout(r, ms));
+
+/* ── 預設「報告說明」內容 ── */
+const RPT_INTRO_DEFAULT =
+`原物料報告說明
+未來報告頻率規劃：
+- 每月1次
+報告型態：
+- 動態儀表板網頁(網頁連結)+文字及口頭說明
+原物料行情資料庫數據來源：
+- 原物料：公開資訊https://fund.bot.com.tw
+- 建材類：營造工程物價指數(CCI)計算平台https://www.stat.gov.tw/CCI/CCI_Site/index.aspx
+數據更新頻率：
+- 原物料價格：每週
+- 建材類物價指數：每月`;
+
+const RPT_RANGE_LABEL = {
+  '1M': '近1個月', '3M': '近3個月', '6M': '近半年',
+  '1Y': '近1年', '3Y': '近3年', 'ALL': '全部期間', 'custom': '自訂區間'
+};
+let rptRange = '6M';
+
+/* ── 開／關設定視窗 ── */
+function openReportModal() {
+  if (!SHEETS.length) { alert('品項尚未載入完成，請稍候再試。'); return; }
+  const d = new Date();
+  document.getElementById('rpt-date').value =
+    d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  document.getElementById('rpt-intro').value =
+    localStorage.getItem('rpt_intro') || RPT_INTRO_DEFAULT;
+  document.getElementById('rpt-err').style.display = 'none';
+  rptBuildRanges();
+  document.getElementById('rptModal').classList.add('show');
+}
+function closeReportModal() { document.getElementById('rptModal').classList.remove('show'); }
+
+function rptBuildRanges() {
+  document.getElementById('rpt-ranges').innerHTML = RANGES.map(r =>
+    `<button class="rbtn${rptRange === r.value ? ' active' : ''}" onclick="rptSetRange('${r.value}')">${r.label}</button>`
+  ).join('');
+  document.getElementById('rpt-custom').classList.toggle('show', rptRange === 'custom');
+}
+function rptSetRange(v) { rptRange = v; rptBuildRanges(); }
+
+/* ── 日期工具 ── */
+function rptShift(dateStr, y, m) {
+  const t = new Date(dateStr.replace(/\//g, '-'));
+  t.setFullYear(t.getFullYear() - y); t.setMonth(t.getMonth() - m);
+  return t.getFullYear() + '/' + String(t.getMonth() + 1).padStart(2, '0') + '/' + String(t.getDate()).padStart(2, '0');
+}
+function rptRowOnOrBefore(rows, target) {
+  let hit = null;
+  for (const r of rows) { if (r.date <= target) hit = r; else break; }
+  return hit;
+}
+function rptRowOnOrAfter(rows, target) {
+  for (const r of rows) if (r.date >= target) return r;
+  return null;
+}
+function rptChg(rows, last, baseRow) {
+  if (!baseRow || !last || !baseRow.price) return null;
+  return {
+    pct: Math.round((last.price - baseRow.price) / baseRow.price * 10000) / 100,
+    baseDate: baseRow.date, basePrice: baseRow.price
+  };
+}
+
+/* ── 組出交給 Claude 的數據 JSON ── */
+function rptBuildData(reportDate, rangeStart, rangeEnd) {
+  const items = SHEETS.map((sheet, i) => {
+    const rows = allData[i] || [];
+    if (!rows.length) return { name: sheet.name, group: sheet.group, unit: sheet.unit, latest: null, note: '無資料' };
+    const last = rows[rows.length - 1];
+    const anchor = last.date;
+    const yr = anchor.slice(0, 4);
+    const win = rows.filter(r => r.date >= rptShift(anchor, 5, 0));
+    const prices = win.map(r => r.price);
+    return {
+      name: sheet.name, group: sheet.group, unit: sheet.unit,
+      latestDate: last.date, latest: last.price,
+      chg1m:  rptChg(rows, last, rptRowOnOrBefore(rows, rptShift(anchor, 0, 1))),
+      chg6m:  rptChg(rows, last, rptRowOnOrBefore(rows, rptShift(anchor, 0, 6))),
+      chgYoY: rptChg(rows, last, rptRowOnOrBefore(rows, rptShift(anchor, 1, 0))),
+      /* 以下為附加參考值，非必要可忽略 */
+      chgYTD: rptChg(rows, last, rptRowOnOrAfter(rows, yr + '/01/01')),
+      high5y: prices.length ? Math.max(...prices) : null,
+      low5y:  prices.length ? Math.min(...prices) : null,
+      dataStart: rows[0].date, points: rows.length
+    };
+  });
+  return {
+    reportDate,
+    chartRange: { label: RPT_RANGE_LABEL[rptRange], start: rangeStart, end: rangeEnd },
+    metricNote: 'chg1m/chg6m/chgYoY 均以該品項「最新一筆資料日」為基準往回比較；pct 為百分比。',
+    sourceNote: { 原物料: '台灣銀行公開行情 fund.bot.com.tw', 指數: '行政院主計總處／公共工程委員會 營造工程物價指數' },
+    items
+  };
+}
+
+/* ── 把多行文字轉成 PptxGenJS 的文字物件 ── */
+function rptTextObjs(raw, blueKey) {
+  const lines = raw.split('\n').filter(l => l.trim() !== '');
+  const out = [];
+  lines.forEach((ln, i) => {
+    const sub = /^\s*-\s+/.test(ln);
+    const t = ln.replace(/^\s*-\s+/, '').trim();
+    if (i === 0) {
+      out.push({ text: t, options: { fontSize: 20, bold: true, breakLine: true, lineSpacingMultiple: 1.5 } });
+      return;
+    }
+    /* 注意：bullet／indentLevel／lineSpacingMultiple 屬「段落層級」屬性，
+       只能掛在該段第一個 run，否則 PptxGenJS 會把同一行拆成兩段。 */
+    const po = {
+      indentLevel: sub ? 1 : 0,
+      bullet: { characterCode: sub ? '25CB' : '25A0' },
+      lineSpacingMultiple: 1.5, fontSize: 18
+    };
+    const m = (!sub && blueKey) ? t.match(/^([^：:]{1,14})([：:])([\s\S]+)$/) : null;
+    if (m) {
+      out.push({ text: m[1], options: { ...po, bold: true, color: '0070C0' } });
+      out.push({ text: m[2] + m[3], options: { fontSize: 18, breakLine: true } });
+    } else {
+      out.push({ text: t, options: { ...po, breakLine: true } });
+    }
+  });
+  return out;
+}
+
+/* ── 截圖：每區塊切成「2 排 × 3 欄 = 6 張卡」一頁 ── */
+async function rptCapture() {
+  const SC = 2, shots = [];
+  for (const g of SECTIONS) {
+    const sec = document.querySelector(`.section[data-group="${CSS.escape(g)}"]`);
+    if (!sec) continue;
+    const cards = [...sec.querySelectorAll('.card')];
+    if (!cards.length) continue;
+    const big = await html2canvas(sec, { scale: SC, backgroundColor: '#f0f2f5', logging: false, useCORS: true, windowWidth: 1300, windowHeight: Math.max(window.innerHeight, 900) });
+    const sTop = sec.getBoundingClientRect().top;
+    const rows = [];
+    for (let i = 0; i < cards.length; i += 3) rows.push(cards.slice(i, i + 3));
+    const total = Math.ceil(rows.length / 2);
+    for (let c = 0; c < rows.length; c += 2) {
+      const chunk = rows.slice(c, c + 2);
+      const topPx = c === 0 ? 0
+        : Math.min(...chunk[0].map(e => e.getBoundingClientRect().top - sTop)) - 6;
+      const lastRow = chunk[chunk.length - 1];
+      const botPx = Math.max(...lastRow.map(e => e.getBoundingClientRect().bottom - sTop)) + 8;
+      const sy = Math.max(0, Math.round(topPx * SC));
+      const sh = Math.min(big.height - sy, Math.round((botPx - topPx) * SC));
+      const cv = document.createElement('canvas');
+      cv.width = big.width; cv.height = sh;
+      cv.getContext('2d').drawImage(big, 0, sy, big.width, sh, 0, 0, big.width, sh);
+      shots.push({ group: g, data: cv.toDataURL('image/png'), w: big.width, h: sh, part: c / 2 + 1, total });
+    }
+  }
+  return shots;
+}
+
+/* ── 主流程 ── */
+async function runReport() {
+  const errEl = document.getElementById('rpt-err');
+  errEl.style.display = 'none';
+  const dv = document.getElementById('rpt-date').value;
+  if (!dv) { errEl.textContent = '請先選擇報告日期。'; errEl.style.display = 'block'; return; }
+  const cs = document.getElementById('rpt-cs').value || null;
+  const ce = document.getElementById('rpt-ce').value || null;
+  if (rptRange === 'custom' && (!cs || !ce)) {
+    errEl.textContent = '選擇「自訂」區間時，請填寫起訖日期。'; errEl.style.display = 'block'; return;
+  }
+  const intro = document.getElementById('rpt-intro').value.trim() || RPT_INTRO_DEFAULT;
+  const summary = document.getElementById('rpt-summary').value.trim();
+  const wantJson = document.getElementById('rpt-json').checked;
+  const wantUpdate = document.getElementById('rpt-update').checked;
+  localStorage.setItem('rpt_intro', intro);
+
+  const ymd = dv.replace(/-/g, '');
+  const dateSlash = dv.replace(/-/g, '/');
+
+  closeReportModal();
+  const ov = document.getElementById('rptOverlay');
+  const ovT = document.getElementById('rptOvText');
+  ov.classList.add('show');
+  const step = t => { ovT.textContent = t; };
+
+  /* 記住目前檢視狀態，結束後還原 */
+  const savedCardRanges = { ...cardRanges };
+  const savedCustom = JSON.parse(JSON.stringify(cardCustom));
+  const savedGlobal = globalRange;
+
+  try {
+    step('① 載入必要函式庫…');
+    await rptEnsure('html2canvas');
+    await rptEnsure('PptxGenJS');
+
+    if (wantUpdate) {
+      step('② 抓取來源網站最新資料…（約 30～90 秒，請稍候）');
+      try {
+        await fetchAll();
+      } catch (e) {
+        if (!confirm('抓取最新資料時發生問題（' + (e.message || e) + '）。\n\n要用目前畫面上的既有資料繼續產生 PPT 嗎？')) {
+          throw new Error('已取消產生。請先按「⟳ 更新資料」確認來源正常後再試。');
+        }
+      }
+      await rptSleep(400);
+    }
+
+    step('③ 套用時間軸區間…');
+    SHEETS.forEach((s, i) => {
+      cardRanges[i] = rptRange;
+      cardCustom[i] = (rptRange === 'custom') ? { s: cs, e: ce } : cardCustom[i];
+    });
+    SHEETS.forEach((s, i) => renderCard(i, s, rptRange, cs, ce));
+    await rptSleep(700);
+
+    /* 計算實際顯示的日期範圍 */
+    let rs = null, re = null;
+    SHEETS.forEach((s, i) => {
+      const f = filterByRange(allData[i] || [], rptRange, cs, ce);
+      if (!f.length) return;
+      if (!rs || f[0].date < rs) rs = f[0].date;
+      if (!re || f[f.length - 1].date > re) re = f[f.length - 1].date;
+    });
+    rs = rs || dateSlash; re = re || dateSlash;
+
+    /* 資料新鮮度提醒：只看「原物料」（指數類本來就落後 1～2 個月，屬正常） */
+    let newestRaw = null;
+    SHEETS.forEach((s, i) => {
+      if (s.group !== '原物料') return;
+      const rows = allData[i] || [];
+      if (rows.length && (!newestRaw || rows[rows.length - 1].date > newestRaw)) newestRaw = rows[rows.length - 1].date;
+    });
+    if (newestRaw) {
+      const gap = Math.round((new Date(dateSlash.replace(/\//g, '-')) - new Date(newestRaw.replace(/\//g, '-'))) / 86400000);
+      if (gap > 14) {
+        if (!confirm('提醒：原物料最新資料日期為 ' + newestRaw + '，距報告日已 ' + gap + ' 天。\n' +
+                     '可能是來源網站尚未更新，或抓取失敗。\n\n要繼續產生 PPT 嗎？')) {
+          throw new Error('已取消產生。請先按「⟳ 更新資料」確認狀態列有無抓取失敗訊息。');
+        }
+      }
+    }
+
+    step('④ 產生各區塊截圖…');
+    document.body.classList.add('report-mode');
+    await rptSleep(150);
+    document.querySelectorAll('canvas').forEach(cv => {
+      const ch = (window.Chart && Chart.getChart) ? Chart.getChart(cv) : null;
+      if (ch) { try { ch.resize(); } catch (e) {} }
+    });
+    await rptSleep(800);
+    const shots = await rptCapture();
+    document.body.classList.remove('report-mode');
+    await rptSleep(100);
+
+    if (!shots.length) throw new Error('沒有可截圖的卡片，請先按「⟳ 更新資料」載入資料。');
+
+    step('⑤ 組裝 PowerPoint…');
+    const F = '微軟正黑體';
+    const pptx = new PptxGenJS();
+    pptx.defineLayout({ name: 'RPT169', width: 13.333, height: 7.5 });
+    pptx.layout = 'RPT169';
+    pptx.author = '採購部';
+    pptx.title = '原物料行情報告 ' + dateSlash;
+
+    /* P1 封面 */
+    const s1 = pptx.addSlide();
+    s1.addText('原物料行情報告',
+      { x: 2.42, y: 2.27, w: 8.55, h: 0.71, fontSize: 36, bold: true, align: 'center', fontFace: F });
+    s1.addText([
+      { text: '採購部', options: { fontSize: 20, bold: true, breakLine: true } },
+      { text: dateSlash, options: { fontSize: 16, bold: true } }
+    ], { x: 9.13, y: 5.31, w: 3.19, h: 0.95, align: 'right', fontFace: F });
+
+    /* P2 報告說明 */
+    const s2 = pptx.addSlide();
+    s2.addText(rptTextObjs(intro, false),
+      { x: 1.19, y: 0.77, w: 10.65, h: 6.0, fontFace: F, valign: 'top' });
+
+    /* P3 本次報告內容摘要 */
+    const s3 = pptx.addSlide();
+    const sumText = summary
+      ? '本次報告內容摘要\n' + summary
+      : '本次報告內容摘要\n（本頁摘要待補：把同時下載的「原物料月報數據' + ymd + '.json」丟給 Claude，說「做原物料月報」即可自動草擬並寫回本頁）';
+    s3.addText(rptTextObjs(sumText, true),
+      { x: 1.19, y: 0.53, w: 11.34, h: 6.74, fontFace: F, valign: 'top' });
+
+    /* P4~ 截圖頁 */
+    const MAXW = 12.63, MAXH = 6.15;
+    shots.forEach(sh => {
+      const sl = pptx.addSlide();
+      sl.addText([
+        { text: '時間軸區間' },
+        { text: rs + '~' + re + ' ' },
+        { text: '(' + RPT_RANGE_LABEL[rptRange] + ')', options: { fontSize: 14 } }
+      ], { x: 0.65, y: 0.14, w: 8.5, h: 0.4, fontSize: 18, bold: true, fontFace: F });
+
+      let dw = MAXW, dh = MAXW * sh.h / sh.w;
+      if (dh > MAXH) { dh = MAXH; dw = MAXH * sh.w / sh.h; }
+      sl.addImage({ data: sh.data, x: (13.333 - dw) / 2, y: 0.66, w: dw, h: dh });
+
+      if (sh.group.indexOf('指數') >= 0) {
+        sl.addText([
+          { text: '資料來源：公共工程委員會之' },
+          { text: '營造工程物價指數', options: { color: '0000FF' } },
+          { text: '，官網數據每月月初更新1次' }
+        ], { x: 6.81, y: 6.96, w: 6.19, h: 0.3, fontSize: 12, bold: true, align: 'right', fontFace: F });
+      }
+    });
+
+    step('⑥ 下載檔案…');
+    await pptx.writeFile({ fileName: '原物料價格' + ymd + '.pptx' });
+
+    if (wantJson) {
+      const payload = rptBuildData(dateSlash, rs, re);
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = '原物料月報數據' + ymd + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    }
+
+    document.getElementById('statusBar').innerHTML =
+      `<span class="ok">✔ 已產生 原物料價格${ymd}.pptx（共 ${shots.length + 3} 頁）</span>` +
+      (wantJson ? `　<span class="ok">✔ 已下載 原物料月報數據${ymd}.json</span>` : '');
+  } catch (e) {
+    document.body.classList.remove('report-mode');
+    alert('產生失敗：' + (e && e.message ? e.message : e));
+  } finally {
+    /* 還原原本檢視狀態 */
+    document.body.classList.remove('report-mode');
+    ov.classList.remove('show');
+    Object.keys(cardRanges).forEach(k => delete cardRanges[k]);
+    Object.assign(cardRanges, savedCardRanges);
+    Object.keys(cardCustom).forEach(k => delete cardCustom[k]);
+    Object.assign(cardCustom, savedCustom);
+    globalRange = savedGlobal;
+    await rptSleep(80);
+    SHEETS.forEach((s, i) => renderCard(i, s,
+      cardRanges[i] || savedGlobal,
+      cardCustom[i]?.s || null, cardCustom[i]?.e || null));
+  }
+}
 </script>
 </body>
 </html>
