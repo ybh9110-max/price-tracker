@@ -140,7 +140,7 @@
   @media(max-width:540px){ .btnrow { width:100%; } .btnrow button { flex:1; } }
 
   /* 產生報告時的固定版面（截圖用） */
-  body.report-mode { padding: 0 !important; background: #f0f2f5 !important; min-width: 1240px !important; }
+  body.report-mode { padding: 0 !important; background: #f0f2f5 !important; }
   body.report-mode .container { max-width: none !important; width: 1216px !important; margin: 0 !important; }
   body.report-mode .hdr, body.report-mode .status-bar { display: none !important; }
   body.report-mode .card-ranges, body.report-mode .card-custom { display: none !important; }
@@ -185,6 +185,12 @@
   .rpt-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; padding-top: 16px; border-top: 1px solid #eee; }
   .rpt-cancel { padding: 9px 18px; background: #fff; color: #555; border: 1px solid #ccc; border-radius: 8px; font-size: 14px; cursor: pointer; min-height: 40px; }
   .rpt-err { font-size: 13px; color: #C0392B; margin-top: 10px; line-height: 1.6; }
+  .rpt-grp { border: 1px solid #e3e6ea; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: #fafbfc; }
+  .rpt-grp-name { font-size: 13px; font-weight: 700; color: #1a3a5c; margin-bottom: 7px; }
+  .rpt-grp-name .n { font-size: 11px; font-weight: 500; color: #999; margin-left: 6px; }
+  .rpt-grp .rpt-custom-row { display: none; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; font-size: 12px; color: #666; }
+  .rpt-grp .rpt-custom-row.show { display: flex; }
+  .rpt-grp .rpt-custom-row input[type=date] { width: auto; font-size: 12px; padding: 5px 7px; }
 
   /* ══════════ 月報密碼視窗 ══════════ */
   #pwModal { display: none; position: fixed; inset: 0; z-index: 9200; background: rgba(0,0,0,.45); overflow-y: auto; padding: 60px 12px 24px; }
@@ -262,12 +268,8 @@
     </div>
 
     <div class="rpt-field">
-      <label>圖表時間軸區間 <span class="sub">（會套用到所有卡片）</span></label>
-      <div class="rpt-ranges" id="rpt-ranges"></div>
-      <div id="rpt-custom">
-        <input type="date" id="rpt-cs" style="width:auto"> ～
-        <input type="date" id="rpt-ce" style="width:auto">
-      </div>
+      <label>圖表時間軸區間 <span class="sub">（三大類別可分別設定）</span></label>
+      <div id="rpt-groups"></div>
     </div>
 
     <div class="rpt-field">
@@ -661,7 +663,11 @@ const RPT_RANGE_LABEL = {
   '1M': '近1個月', '3M': '近3個月', '6M': '近半年',
   '1Y': '近1年', '3Y': '近3年', 'ALL': '全部期間', 'custom': '自訂區間'
 };
-let rptRange = '6M';
+/* 三大類別各自的時間軸區間 */
+const rptRangeByGroup  = { '原物料': '6M', '建材類指數': '1Y', '工資類指數': '1Y' };
+const rptCustomByGroup = { '原物料': {s:null,e:null}, '建材類指數': {s:null,e:null}, '工資類指數': {s:null,e:null} };
+function rptGroupRange(g)  { return rptRangeByGroup[g]  || '6M'; }
+function rptGroupCustom(g) { return rptCustomByGroup[g] || {s:null,e:null}; }
 
 /* ── 月報密碼驗證（密碼存在 Apps Script 指令碼屬性，不在本檔案內） ── */
 function askReportPw() {
@@ -716,12 +722,37 @@ function openReportModal() {
 function closeReportModal() { document.getElementById('rptModal').classList.remove('show'); }
 
 function rptBuildRanges() {
-  document.getElementById('rpt-ranges').innerHTML = RANGES.map(r =>
-    `<button class="rbtn${rptRange === r.value ? ' active' : ''}" onclick="rptSetRange('${r.value}')">${r.label}</button>`
-  ).join('');
-  document.getElementById('rpt-custom').classList.toggle('show', rptRange === 'custom');
+  const host = document.getElementById('rpt-groups');
+  host.innerHTML = SECTIONS.map((g, gi) => {
+    const cnt = SHEETS.filter(s => s.group === g).length;
+    const cur = rptGroupRange(g);
+    const cu  = rptGroupCustom(g);
+    const btns = RANGES.map(r =>
+      `<button class="rbtn${cur === r.value ? ' active' : ''}" onclick="rptSetRange('${gi}','${r.value}')">${r.label}</button>`
+    ).join('');
+    return `<div class="rpt-grp">
+      <div class="rpt-grp-name">${g}<span class="n">${cnt} 項</span></div>
+      <div class="rpt-ranges">${btns}</div>
+      <div class="rpt-custom-row${cur === 'custom' ? ' show' : ''}">
+        <input type="date" id="rpt-cs-${gi}" value="${cu.s || ''}"> ～
+        <input type="date" id="rpt-ce-${gi}" value="${cu.e || ''}">
+      </div>
+    </div>`;
+  }).join('');
 }
-function rptSetRange(v) { rptRange = v; rptBuildRanges(); }
+function rptSetRange(gi, v) {
+  const g = SECTIONS[Number(gi)];
+  rptSyncCustomInputs();
+  rptRangeByGroup[g] = v;
+  rptBuildRanges();
+}
+function rptSyncCustomInputs() {
+  SECTIONS.forEach((g, gi) => {
+    const a = document.getElementById('rpt-cs-' + gi);
+    const b = document.getElementById('rpt-ce-' + gi);
+    if (a && b) rptCustomByGroup[g] = { s: a.value || null, e: b.value || null };
+  });
+}
 
 /* ── 日期工具 ── */
 function rptShift(dateStr, y, m) {
@@ -747,7 +778,7 @@ function rptChg(rows, last, baseRow) {
 }
 
 /* ── 組出交給 Claude 的數據 JSON ── */
-function rptBuildData(reportDate, rangeStart, rangeEnd) {
+function rptBuildData(reportDate, winByGroup) {
   const items = SHEETS.map((sheet, i) => {
     const rows = allData[i] || [];
     if (!rows.length) return { name: sheet.name, group: sheet.group, unit: sheet.unit, latest: null, note: '無資料' };
@@ -771,7 +802,7 @@ function rptBuildData(reportDate, rangeStart, rangeEnd) {
   });
   return {
     reportDate,
-    chartRange: { label: RPT_RANGE_LABEL[rptRange], start: rangeStart, end: rangeEnd },
+    chartRanges: winByGroup,
     metricNote: 'chg1m/chg6m/chgYoY 均以該品項「最新一筆資料日」為基準往回比較；pct 為百分比。',
     sourceNote: { 原物料: '台灣銀行公開行情 fund.bot.com.tw', 指數: '行政院主計總處／公共工程委員會 營造工程物價指數' },
     items
@@ -808,47 +839,69 @@ function rptTextObjs(raw, blueKey) {
 }
 
 /* ── 截圖：每區塊切成「2 排 × 3 欄 = 6 張卡」一頁 ── */
-async function rptCapture() {
+async function rptCapture(winByGroup) {
   const SC = 2, shots = [];
   window.scrollTo(0, 0);
-  await new Promise(r => setTimeout(r, 120));
+  await rptSleep(120);
   for (const g of SECTIONS) {
     const sec = document.querySelector(`.section[data-group="${CSS.escape(g)}"]`);
     if (!sec) continue;
     const cards = [...sec.querySelectorAll('.card')];
     if (!cards.length) continue;
-    /* ── 明確指定截圖範圍，不依賴瀏覽器視窗寬度（修正右側被切掉） ── */
-    const rect = sec.getBoundingClientRect();
-    const capW = Math.ceil(Math.max(sec.scrollWidth, rect.width));
-    const capH = Math.ceil(Math.max(sec.scrollHeight, rect.height));
-    const capX = Math.round(rect.left + (window.scrollX || window.pageXOffset || 0));
-    const capY = Math.round(rect.top + (window.scrollY || window.pageYOffset || 0));
-    const big = await html2canvas(sec, {
-      scale: SC, backgroundColor: '#f0f2f5', logging: false, useCORS: true,
-      x: capX, y: capY, width: capW, height: capH,
-      scrollX: 0, scrollY: 0,
-      windowWidth: Math.max(1400, capW + 80),
-      windowHeight: Math.max(window.innerHeight, capH + 200)
-    });
-    const sTop = sec.getBoundingClientRect().top;
-    const rows = [];
-    for (let i = 0; i < cards.length; i += 3) rows.push(cards.slice(i, i + 3));
-    const total = Math.ceil(rows.length / 2);
-    for (let c = 0; c < rows.length; c += 2) {
-      const chunk = rows.slice(c, c + 2);
-      const topPx = c === 0 ? 0
-        : Math.min(...chunk[0].map(e => e.getBoundingClientRect().top - sTop)) - 6;
-      const lastRow = chunk[chunk.length - 1];
-      const botPx = Math.max(...lastRow.map(e => e.getBoundingClientRect().bottom - sTop)) + 8;
-      const sy = Math.max(0, Math.round(topPx * SC));
-      const sh = Math.min(big.height - sy, Math.round((botPx - topPx) * SC));
-      const cv = document.createElement('canvas');
-      cv.width = big.width; cv.height = sh;
-      cv.getContext('2d').drawImage(big, 0, sy, big.width, sh, 0, 0, big.width, sh);
-      shots.push({ group: g, data: cv.toDataURL('image/png'), w: big.width, h: sh, part: c / 2 + 1, total });
+    const total = Math.ceil(cards.length / 6);
+    for (let p = 0; p < total; p++) {
+      const from = p * 6, to = from + 6;
+      /* 只留這一頁的 6 張卡，其餘暫時隱藏 → 截圖範圍必定正確 */
+      cards.forEach((c, i) => { c.style.display = (i >= from && i < to) ? '' : 'none'; });
+      await rptSleep(220);
+      const rect = sec.getBoundingClientRect();
+      const w = Math.ceil(Math.max(sec.scrollWidth, rect.width));
+      const h = Math.ceil(Math.max(sec.scrollHeight, rect.height));
+      const cv = await html2canvas(sec, {
+        scale: SC, backgroundColor: '#f0f2f5', logging: false, useCORS: true,
+        width: w, height: h,
+        windowWidth: Math.max(1400, w + 80),
+        windowHeight: Math.max(window.innerHeight, h + 240)
+      });
+      shots.push({
+        group: g, data: cv.toDataURL('image/png'),
+        w: cv.width, h: cv.height, part: p + 1, total,
+        win: (winByGroup && winByGroup[g]) || null
+      });
     }
+    cards.forEach(c => { c.style.display = ''; });
+    await rptSleep(80);
   }
   return shots;
+}
+
+/* ── 算出某類別在 PPT 標題要顯示的區間起訖 ── */
+function rptCutoff(range) {
+  const now = new Date(), c = new Date(now);
+  if (range === '1M') c.setMonth(now.getMonth() - 1);
+  else if (range === '3M') c.setMonth(now.getMonth() - 3);
+  else if (range === '6M') c.setMonth(now.getMonth() - 6);
+  else if (range === '1Y') c.setFullYear(now.getFullYear() - 1);
+  else if (range === '3Y') c.setFullYear(now.getFullYear() - 3);
+  else return null;
+  return c.getFullYear() + '/' + String(c.getMonth() + 1).padStart(2, '0') + '/' + String(c.getDate()).padStart(2, '0');
+}
+function rptWindowFor(g, reportDateSlash) {
+  const r = rptGroupRange(g), cu = rptGroupCustom(g);
+  const lab = RPT_RANGE_LABEL[r];
+  if (r === 'custom' && cu.s && cu.e) {
+    return { label: lab, start: cu.s.replace(/-/g, '/'), end: cu.e.replace(/-/g, '/') };
+  }
+  if (r === 'ALL') {
+    let mn = null;
+    SHEETS.forEach((sh, i) => {
+      if (sh.group !== g) return;
+      const rows = allData[i] || [];
+      if (rows.length && (!mn || rows[0].date < mn)) mn = rows[0].date;
+    });
+    return { label: lab, start: mn || reportDateSlash, end: reportDateSlash };
+  }
+  return { label: lab, start: rptCutoff(r) || reportDateSlash, end: reportDateSlash };
 }
 
 /* ── 主流程 ── */
@@ -857,10 +910,13 @@ async function runReport() {
   errEl.style.display = 'none';
   const dv = document.getElementById('rpt-date').value;
   if (!dv) { errEl.textContent = '請先選擇報告日期。'; errEl.style.display = 'block'; return; }
-  const cs = document.getElementById('rpt-cs').value || null;
-  const ce = document.getElementById('rpt-ce').value || null;
-  if (rptRange === 'custom' && (!cs || !ce)) {
-    errEl.textContent = '選擇「自訂」區間時，請填寫起訖日期。'; errEl.style.display = 'block'; return;
+  rptSyncCustomInputs();
+  for (const g of SECTIONS) {
+    const cu = rptGroupCustom(g);
+    if (rptGroupRange(g) === 'custom' && (!cu.s || !cu.e)) {
+      errEl.textContent = '「' + g + '」選擇了「自訂」區間，請填寫起訖日期。';
+      errEl.style.display = 'block'; return;
+    }
   }
   const intro = document.getElementById('rpt-intro').value.trim() || RPT_INTRO_DEFAULT;
   const summary = document.getElementById('rpt-summary').value.trim();
@@ -899,23 +955,18 @@ async function runReport() {
       await rptSleep(400);
     }
 
-    step('③ 套用時間軸區間…');
-    SHEETS.forEach((s, i) => {
-      cardRanges[i] = rptRange;
-      cardCustom[i] = (rptRange === 'custom') ? { s: cs, e: ce } : cardCustom[i];
+    step('③ 套用各類別時間軸區間…');
+    SHEETS.forEach((sh, i) => {
+      const r = rptGroupRange(sh.group), cu = rptGroupCustom(sh.group);
+      cardRanges[i] = r;
+      if (r === 'custom') cardCustom[i] = { s: cu.s, e: cu.e };
+      renderCard(i, sh, r, cu.s, cu.e);
     });
-    SHEETS.forEach((s, i) => renderCard(i, s, rptRange, cs, ce));
     await rptSleep(700);
 
-    /* 計算實際顯示的日期範圍 */
-    let rs = null, re = null;
-    SHEETS.forEach((s, i) => {
-      const f = filterByRange(allData[i] || [], rptRange, cs, ce);
-      if (!f.length) return;
-      if (!rs || f[0].date < rs) rs = f[0].date;
-      if (!re || f[f.length - 1].date > re) re = f[f.length - 1].date;
-    });
-    rs = rs || dateSlash; re = re || dateSlash;
+    /* 各類別的區間起訖（依設定值，不受未來日期資料影響） */
+    const winByGroup = {};
+    SECTIONS.forEach(g => { winByGroup[g] = rptWindowFor(g, dateSlash); });
 
     /* 資料新鮮度提醒：只看「原物料」（指數類本來就落後 1～2 個月，屬正常） */
     let newestRaw = null;
@@ -942,7 +993,7 @@ async function runReport() {
       if (ch) { try { ch.resize(); } catch (e) {} }
     });
     await rptSleep(800);
-    const shots = await rptCapture();
+    const shots = await rptCapture(winByGroup);
     document.body.classList.remove('report-mode');
     await rptSleep(100);
 
@@ -982,11 +1033,12 @@ async function runReport() {
     const MAXW = 12.63, MAXH = 6.15;
     shots.forEach(sh => {
       const sl = pptx.addSlide();
+      const wv = sh.win || { label: '', start: dateSlash, end: dateSlash };
       sl.addText([
-        { text: '時間軸區間' },
-        { text: rs + '~' + re + ' ' },
-        { text: '(' + RPT_RANGE_LABEL[rptRange] + ')', options: { fontSize: 14 } }
-      ], { x: 0.65, y: 0.14, w: 8.5, h: 0.4, fontSize: 18, bold: true, fontFace: F });
+        { text: sh.group + '　時間軸區間' },
+        { text: wv.start + '~' + wv.end + ' ' },
+        { text: '(' + wv.label + ')', options: { fontSize: 14 } }
+      ], { x: 0.65, y: 0.14, w: 10.5, h: 0.4, fontSize: 18, bold: true, fontFace: F });
 
       let dw = MAXW, dh = MAXW * sh.h / sh.w;
       if (dh > MAXH) { dh = MAXH; dw = MAXH * sh.w / sh.h; }
@@ -1005,7 +1057,7 @@ async function runReport() {
     await pptx.writeFile({ fileName: '原物料價格' + ymd + '.pptx' });
 
     if (wantJson) {
-      const payload = rptBuildData(dateSlash, rs, re);
+      const payload = rptBuildData(dateSlash, winByGroup);
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
