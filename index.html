@@ -140,7 +140,7 @@
   @media(max-width:540px){ .btnrow { width:100%; } .btnrow button { flex:1; } }
 
   /* 產生報告時的固定版面（截圖用） */
-  body.report-mode { padding: 0 !important; background: #f0f2f5 !important; }
+  body.report-mode { padding: 0 !important; background: #f0f2f5 !important; min-width: 1240px !important; }
   body.report-mode .container { max-width: none !important; width: 1216px !important; margin: 0 !important; }
   body.report-mode .hdr, body.report-mode .status-bar { display: none !important; }
   body.report-mode .card-ranges, body.report-mode .card-custom { display: none !important; }
@@ -810,12 +810,26 @@ function rptTextObjs(raw, blueKey) {
 /* ── 截圖：每區塊切成「2 排 × 3 欄 = 6 張卡」一頁 ── */
 async function rptCapture() {
   const SC = 2, shots = [];
+  window.scrollTo(0, 0);
+  await new Promise(r => setTimeout(r, 120));
   for (const g of SECTIONS) {
     const sec = document.querySelector(`.section[data-group="${CSS.escape(g)}"]`);
     if (!sec) continue;
     const cards = [...sec.querySelectorAll('.card')];
     if (!cards.length) continue;
-    const big = await html2canvas(sec, { scale: SC, backgroundColor: '#f0f2f5', logging: false, useCORS: true, windowWidth: 1300, windowHeight: Math.max(window.innerHeight, 900) });
+    /* ── 明確指定截圖範圍，不依賴瀏覽器視窗寬度（修正右側被切掉） ── */
+    const rect = sec.getBoundingClientRect();
+    const capW = Math.ceil(Math.max(sec.scrollWidth, rect.width));
+    const capH = Math.ceil(Math.max(sec.scrollHeight, rect.height));
+    const capX = Math.round(rect.left + (window.scrollX || window.pageXOffset || 0));
+    const capY = Math.round(rect.top + (window.scrollY || window.pageYOffset || 0));
+    const big = await html2canvas(sec, {
+      scale: SC, backgroundColor: '#f0f2f5', logging: false, useCORS: true,
+      x: capX, y: capY, width: capW, height: capH,
+      scrollX: 0, scrollY: 0,
+      windowWidth: Math.max(1400, capW + 80),
+      windowHeight: Math.max(window.innerHeight, capH + 200)
+    });
     const sTop = sec.getBoundingClientRect().top;
     const rows = [];
     for (let i = 0; i < cards.length; i += 3) rows.push(cards.slice(i, i + 3));
