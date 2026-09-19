@@ -83,6 +83,7 @@
   .cprice-row { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
   .cprice { font-size: 20px; font-weight: 700; color: #1a1a1a; }
   .cprice-unit { font-size: 11px; color: #888; }
+  .csrc { font-size: 11px; color: #999; margin-top: 2px; }
   .card-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
   .clabel { font-size: 11px; color: #999; margin-bottom: 1px; white-space: nowrap; }
   .cchg { font-size: 15px; font-weight: 700; white-space: nowrap; }
@@ -313,6 +314,9 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbx2QJGVERBTqvDmw1-q-ln7
 
 let SHEETS = [];   /* 品項清單改由試算表「⚙設定」工作表管理，開頁時自動載入 */
 
+/* 個別品項的資料來源標註（卡片上顯示；沒列的品項不顯示） */
+const SOURCE_NOTE = { '北海布蘭特原油現貨價': '來源：美國 EIA 現貨價（2026/09 起）' };
+
 const SECTIONS = ['原物料','建材類指數','工資類指數'];
 
 const RANGES = [
@@ -426,6 +430,7 @@ function buildCard(idx, sheet) {
           <span class="cprice" id="cp-${idx}">--</span>
           <span class="cprice-unit">${sheet.unit}</span>
         </div>
+        ${SOURCE_NOTE[sheet.name] ? `<div class="csrc">${SOURCE_NOTE[sheet.name]}</div>` : ''}
       </div>
       <div class="card-right">
         <div class="cchg" id="cc-${idx}">--</div>
@@ -654,6 +659,7 @@ const RPT_INTRO_DEFAULT =
 - 動態儀表板網頁(網頁連結)+文字及口頭說明
 原物料行情資料庫數據來源：
 - 原物料：公開資訊https://fund.bot.com.tw
+- 北海布蘭特原油：美國能源資訊署 EIA 現貨價（2026/09 起，經 FRED 取得，約每週更新）https://fred.stlouisfed.org/series/DCOILBRENTEU
 - 建材類：營造工程物價指數(CCI)計算平台https://www.stat.gov.tw/CCI/CCI_Site/index.aspx
 數據更新頻率：
 - 原物料價格：每週
@@ -804,7 +810,7 @@ function rptBuildData(reportDate, winByGroup) {
     reportDate,
     chartRanges: winByGroup,
     metricNote: 'chg1m/chg6m/chgYoY 均以該品項「最新一筆資料日」為基準往回比較；pct 為百分比。',
-    sourceNote: { 原物料: '台灣銀行公開行情 fund.bot.com.tw', 指數: '行政院主計總處／公共工程委員會 營造工程物價指數' },
+    sourceNote: { 原物料: '台灣銀行公開行情 fund.bot.com.tw（北海布蘭特原油自 2026/09 起改用美國 EIA 現貨價，經 FRED 取得，EIA 約每週公布一次）', 指數: '行政院主計總處／公共工程委員會 營造工程物價指數' },
     items
   };
 }
